@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>售后知识与工单助手</title>
+<style>
+body{font:16px/1.7 system-ui,sans-serif;color:#172b3b;background:#f0f4f8;margin:0}main{max-width:1040px;margin:40px auto;padding:24px}h1{font-size:30px;margin:0}h2{font-size:20px}header{margin-bottom:24px}.pill{display:inline-block;background:#dbeafe;padding:3px 12px;border-radius:20px;color:#1e40af;font-size:13px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}section{background:#fff;border:1px solid #dbe4ee;border-radius:16px;padding:24px}label{display:block;margin-top:12px}input,textarea,select{box-sizing:border-box;width:100%;padding:10px;border:1px solid #bbc8d6;border-radius:7px;font:inherit}button{border:0;border-radius:7px;padding:10px 16px;margin-top:14px;background:#155e75;color:white;font:inherit;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.secondary{background:#e7eef5;color:#233b4d}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f7fa;padding:15px;border-radius:8px;font:13px/1.65 ui-monospace,monospace;min-height:110px}.wide{grid-column:1/-1}.small{font-size:13px;color:#526879}.error{color:#b91c1c}a{color:#155e75}#confirmbox{display:flex;gap:9px;align-items:flex-start}#confirmbox input{width:auto;margin-top:6px}@media(max-width:720px){main{margin:10px auto;padding:15px}.grid{grid-template-columns:1fr}section{padding:18px}.wide{grid-column:auto}}
+</style><main>
+<header><span class="pill" id="mode">检测运行模式…</span><h1>电商售后知识与工单助手</h1><p>读取订单 → 核验适用政策 → 生成申请 → 人工确认 → 创建待审核工单</p><p class="small">本地演示数据，不连接真实电商平台。规则模式无需模型；Dify 只解释政策，不执行退款。</p></header>
+<div class="grid"><section><h2>1. 核验订单</h2>
+<label>演示用户<select id="token"><option value="demo-alice">Alice（demo-alice）</option><option value="demo-bob">Bob（demo-bob）</option></select></label>
+<label>订单编号<input id="order" value="A1001"></label><p class="small">Alice：A1001 可申请、A1002 超时；Bob：B2001 可申请。</p>
+<button id="inspect">查看并核验</button><button id="explain" class="secondary">助手解释</button>
+<pre id="facts">等待核验订单。</pre></section>
+<section><h2>2. 生成申请并人工确认</h2><label>退货原因<textarea id="reason" rows="2">商品不符合预期，申请退货</textarea></label>
+<button id="propose">生成待确认申请</button><pre id="proposal">尚未生成申请。</pre>
+<label id="confirmbox"><input id="approved" type="checkbox"><span>我已核对上方订单、退货原因及政策，确认创建待客服审核的退货工单。</span></label>
+<button id="confirm" disabled>确认创建工单</button><p class="small">确认有效期 15 分钟；订单或政策变化后必须重新确认。</p></section>
+<section class="wide"><h2>执行结果与审计</h2><p id="status" role="status">已就绪。</p><pre id="result">尚未创建工单。</pre><button id="audit" class="secondary">查看当前用户审计记录</button><p class="small"><a href="/api/docs" target="_blank" rel="noopener">用户 API 文档</a> · <a href="/openapi.json" target="_blank" rel="noopener">Dify 只读政策工具 OpenAPI</a></p></section></div></main>
+<script>
+const $ = id => document.getElementById(id); let preview = null, idempotencyKey = null;
+function display(id,data){$(id).textContent=JSON.stringify(data,null,2)}
+function reset(){preview=null;idempotencyKey=null;$('approved').checked=false;$('confirm').disabled=true}
+async function call(path,body){const options={headers:{Authorization:'Bearer '+$('token').value}};if(body){options.method='POST';options.headers['Content-Type']='application/json';options.body=JSON.stringify(body)}const res=await fetch(path,options);const data=await res.json();if(!res.ok)throw Error(data.message||JSON.stringify(data));return data}
+async function run(task){$('status').className='';try{await task();$('status').textContent='操作完成。'}catch(err){$('status').textContent=err.message;$('status').className='error'}}
+$('token').onchange=()=>{reset();$('order').value=$('token').value==='demo-bob'?'B2001':'A1001';$('facts').textContent='身份已切换，请重新核验。';$('proposal').textContent='尚未生成申请。';$('result').textContent='尚未创建工单。'};
+$('order').oninput=reset;$('reason').oninput=reset;
+$('inspect').onclick=()=>run(async()=>{reset();display('facts',await call('/api/returns/check',{order_id:$('order').value}))});
+$('explain').onclick=()=>run(async()=>display('result',await call('/api/assistant',{order_id:$('order').value,question:'这笔订单能否退货？请说明依据。'})));
+$('propose').onclick=()=>run(async()=>{reset();const value=await call('/api/returns/proposals',{order_id:$('order').value,reason:$('reason').value});preview=await call('/api/human/proposals/'+encodeURIComponent(value.proposal_id));idempotencyKey=crypto.randomUUID();display('proposal',{proposal_id:preview.proposal_id,order:preview.snapshot.order,reason:preview.snapshot.reason,policy:preview.snapshot.policy,expires_at:preview.expires_at});});
+$('approved').onchange=()=>{$('confirm').disabled=!preview||!$('approved').checked};
+$('confirm').onclick=()=>run(async()=>{if(!preview||!$('approved').checked)throw Error('请先生成申请并明确确认');const result=await call('/api/human/confirm',{proposal_id:preview.proposal_id,digest:preview.digest,confirmation_token:preview.confirmation_token,confirmed:true,idempotency_key:idempotencyKey});display('result',result);$('confirm').disabled=true;$('approved').checked=false;});
+$('audit').onclick=()=>run(async()=>display('result',await call('/api/audit')));
+fetch('/health').then(r=>r.json()).then(v=>{$('mode').textContent=v.mode==='offline_rules'?'离线规则模式 · 未调用大模型':'Dify Chatflow 解释模式'}).catch(()=>{$('mode').textContent='服务不可用'});
+</script></html>

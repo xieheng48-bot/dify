@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "commerce-assistant-demo"
+version = "0.1.0"
+description = "电商售后知识与工单助手：可运行的 Dify 工具服务"
+authors = [{name = "谢恒"}]
+requires-python = ">=3.10"
+dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "httpx>=0.27,<1"]
+
+[project.urls]
+"Author GitHub" = "https://github.com/xieheng48-bot"
+
+[project.optional-dependencies]
+test = ["pytest>=8,<9"]
+
+[tool.setuptools.package-data]
+commerce_app = ["static/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
